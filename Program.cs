@@ -395,7 +395,6 @@ namespace Course_work_7_Sem
             Console.WriteLine("Завдання B2: Мережа масового обслуговування регулювальної ділянки цеху");
             Console.WriteLine("================================================================================\n");
 
-            // 1. БАЗОВА МОДЕЛЬ (100 реплікацій за нерівністю Чебишева)
             var baseConfig = new SimulationConfig
             {
                 SimTime = 5000.0,
@@ -424,13 +423,11 @@ namespace Course_work_7_Sem
             Console.WriteLine($"Сер. черга вторинного регул.: {qSec.Mean:F2} ± {qSec.StdDev:F2} [{qSec.Min:F2}; {qSec.Max:F2}]");
             Console.WriteLine($"Сер. черга повного регул.:    {qFull.Mean:F2} ± {qFull.StdDev:F2} [{qFull.Min:F2}; {qFull.Max:F2}]");
 
-            // 2. СЕРІЯ ЕКСПЕРИМЕНТІВ ВАРІЮВАННЯ ВХІДНОГО БУФЕРА N
             Console.WriteLine("\n================================================================================");
             Console.WriteLine("ДОСЛІДЖЕННЯ МІСТКОСТІ ВХІДНОГО НАКОПИЧУВАЧА N (100 реплікацій на кожну точку):");
             Console.WriteLine("N (шт)\t| P_відм (Mean ± Std)\t| Завант. D1\t| Завант. D3\t| Черга D3 (Full)");
             Console.WriteLine("--------------------------------------------------------------------------------");
 
-            //int[] testCapacities = { 0, 2, 4, 6, 8, 10, 12, 14, 16 };
             int[] testCapacities = { 0, 2, 4, 6, 8, 10, 12, 14, 16, 20, 30, 40, 50, 60, 80, 100, 120, 150, 200 };
             foreach (var n in testCapacities)
             {

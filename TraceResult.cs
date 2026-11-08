@@ -12,15 +12,13 @@ namespace Course_work_7_Sem
     {
         public ReplicationResult Base { get; set; } = new();
         public List<QueueSample> Samples { get; } = new();
-        public List<double> TimesMain { get; } = new();   // час у системі, маршрут D1->D2
-        public List<double> TimesFull { get; } = new();   // час у системі, маршрут D3
-        public List<double> WaitsIn { get; } = new();     // очікування у вхідному буфері
-        public List<double> WaitsSucc { get; } = new();   // очікування в буфері успішних
-        public List<double> WaitsFail { get; } = new();   // очікування в буфері відхилених
+        public List<double> TimesMain { get; } = new();
+        public List<double> TimesFull { get; } = new();
+        public List<double> WaitsIn { get; } = new();
+        public List<double> WaitsSucc { get; } = new();
+        public List<double> WaitsFail { get; } = new();
     }
 
-    // Копія B2Simulator.Run() із записом даних для рисунків.
-    // Логіка і порядок викликів генератора випадкових чисел ідентичні оригіналу.
     public class TraceSimulator
     {
         private readonly SimulationConfig _config;
@@ -59,7 +57,6 @@ namespace Course_work_7_Sem
             int totalRejectedPairs = 0;
             int completedAggregates = 0;
 
-            // Час постановки агрегата в чергу (для обчислення часу очікування)
             var enqTime = new Dictionary<int, double>();
 
             void Put(QueueTracker q, Aggregate a)
@@ -95,7 +92,6 @@ namespace Course_work_7_Sem
             {
                 var ev = eventQueue.Dequeue();
 
-                // Між подіями стан системи не змінюється: записуємо його до обробки події
                 double evTime = Math.Min(ev.Time, _config.SimTime);
                 while (nextSample <= evTime)
                 {
@@ -264,11 +260,21 @@ namespace Course_work_7_Sem
 
         public static void Export(string dir, string tag, List<TraceResult> reps)
         {
-            Directory.CreateDirectory(dir);
-            using var qs = new StreamWriter(Path.Combine(dir, $"queues_{tag}.csv"));
-            using var rs = new StreamWriter(Path.Combine(dir, $"routes_{tag}.csv"));
-            using var ws = new StreamWriter(Path.Combine(dir, $"waits_{tag}.csv"));
-            using var sm = new StreamWriter(Path.Combine(dir, $"summary_{tag}.csv"));
+            //Directory.CreateDirectory(dir);
+            //using var qs = new StreamWriter(Path.Combine(dir, $"queues_{tag}.csv"));
+            //using var rs = new StreamWriter(Path.Combine(dir, $"routes_{tag}.csv"));
+            //using var ws = new StreamWriter(Path.Combine(dir, $"waits_{tag}.csv"));
+            //using var sm = new StreamWriter(Path.Combine(dir, $"summary_{tag}.csv"));
+
+            string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+            string projectRoot = Path.GetFullPath(Path.Combine(baseDir, "..", "..", ".."));
+            string fullOutDir = Path.Combine(projectRoot, dir);
+
+            Directory.CreateDirectory(fullOutDir);
+            using var qs = new StreamWriter(Path.Combine(fullOutDir, $"queues_{tag}.csv"));
+            using var rs = new StreamWriter(Path.Combine(fullOutDir, $"routes_{tag}.csv"));
+            using var ws = new StreamWriter(Path.Combine(fullOutDir, $"waits_{tag}.csv"));
+            using var sm = new StreamWriter(Path.Combine(fullOutDir, $"summary_{tag}.csv"));
 
             qs.WriteLine("rep,t,qin,qsucc,qfail,total");
             rs.WriteLine("rep,route,time");
@@ -320,10 +326,6 @@ namespace Course_work_7_Sem
             Console.OutputEncoding = System.Text.Encoding.UTF8;
             CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
 
-            // ---------------------------------------------------------------
-            // 0. Самоперевірка: TraceSimulator має давати ті самі результати,
-            //    що й оригінальний B2Simulator при однакових сідах
-            // ---------------------------------------------------------------
             Console.WriteLine(">>> Самоперевірка: TraceSimulator проти B2Simulator");
             bool allOk = true;
             foreach (var n in new[] { 0, 4, 14 })
@@ -353,19 +355,11 @@ namespace Course_work_7_Sem
                 return;
             }
 
-            // ---------------------------------------------------------------
-            // 1. Розширений перебір N для пошуку безвідмовної конфігурації
-            // ---------------------------------------------------------------
             Console.WriteLine("\n================================================================================");
             Console.WriteLine("РОЗШИРЕНЕ ДОСЛІДЖЕННЯ N (100 реплікацій на кожну точку, T = 5000 хв):");
             Console.WriteLine("N (шт)\t| P_відм (Mean ± Std)\t| Без відмов, %\t| Завант. D1\t| Завант. D3\t| Черга D3\t| Q_in сер.\t| Q_in макс.");
             Console.WriteLine("--------------------------------------------------------------------------------");
 
-            //int[] capacities =
-            //{
-            //    0, 2, 4, 6, 8, 10, 12, 14, 16,
-            //    20, 30, 40, 50, 60, 80, 100, 120, 150, 200
-            //};
             int[] capacities =
             {
                 0, 2, 4, 6, 8, 10, 12, 14, 16,
@@ -387,10 +381,6 @@ namespace Course_work_7_Sem
                     $"{n}\t| {p.Mean:F4} ± {p.StdDev:F4}\t| {noRej:F0}\t| {d1.Mean:F4}\t| {d3.Mean:F4}\t| {qf.Mean:F2}\t| {qin.Mean:F2}\t| {qinMax.Mean:F2}");
             }
 
-            // ---------------------------------------------------------------
-            // 2. Експорт даних для рисунків + числа для тексту розділу 4
-            //    Для безвідмовної конфігурації додайте пару (знайдене N, 5000.0)
-            // ---------------------------------------------------------------
             Console.WriteLine("\n>>> Експорт даних для рисунків у папку out ...");
             var runs = new List<(int N, double T)>
             {
@@ -399,8 +389,6 @@ namespace Course_work_7_Sem
                 (14, 5000.0),
                 (14, 10000.0),
                 (124, 5000.0)
-                /*(100, 5000.0) */           // безвідмовна конфігурація (потрібна для рис. 4.8–4.13)
-                // , (знайдене_N, 5000.0)
             };
 
             foreach (var (n, t) in runs)
