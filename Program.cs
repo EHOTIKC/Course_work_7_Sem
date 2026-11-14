@@ -72,6 +72,13 @@ namespace Course_work_7_Sem
             _lastStateChangeTime = 0.0;
         }
 
+        public void ResetStats(double currentTime)
+        {
+            TotalBusyTime = 0.0;
+            ProcessedBatchesCount = 0;
+            _lastStateChangeTime = currentTime;
+        }
+
         public void StartService(IEnumerable<Aggregate> items, double currentTime)
         {
             IsBusy = true;
@@ -117,6 +124,15 @@ namespace Course_work_7_Sem
             Name = name;
         }
 
+
+        public void ResetStats(double currentTime)
+        {
+            _areaUnderCurve = 0.0;
+            MaxObserved = _queue.Count;
+            _lastChangeTime = currentTime;
+        }
+
+
         public void Enqueue(Aggregate item, double currentTime)
         {
             UpdateStats(currentTime);
@@ -151,6 +167,8 @@ namespace Course_work_7_Sem
         public double MeanSecondaryTime { get; set; } = 30.0;
         public double MeanFullTime { get; set; } = 100.0;
         public int InputBufferCapacity { get; set; } = 0;
+
+        public double WarmupTime { get; set; } = 1500.0;
     }
 
     public class ReplicationResult
@@ -230,12 +248,39 @@ namespace Course_work_7_Sem
             double firstArrival = NextExp(_config.MeanArrivalInterval);
             eventQueue.Enqueue(new SimEvent(firstArrival, EventType.Arrival), firstArrival);
 
+            double totalEndTime = _config.WarmupTime + _config.SimTime;
+            bool warmupDone = _config.WarmupTime <= 0.0;
+
             while (eventQueue.Count > 0)
             {
                 var ev = eventQueue.Dequeue();
-                if (ev.Time > _config.SimTime)
+
+                if (!warmupDone && ev.Time >= _config.WarmupTime)
                 {
-                    currentTime = _config.SimTime;
+                    double wt = _config.WarmupTime;
+                    inputQueue.UpdateStats(wt);
+                    bufferSucc.UpdateStats(wt);
+                    bufferFail.UpdateStats(wt);
+                    channelPrimary.FinalizeTime(wt);
+                    channelSecondary.FinalizeTime(wt);
+                    channelFull.FinalizeTime(wt);
+
+                    inputQueue.ResetStats(wt);
+                    bufferSucc.ResetStats(wt);
+                    bufferFail.ResetStats(wt);
+                    channelPrimary.ResetStats(wt);
+                    channelSecondary.ResetStats(wt);
+                    channelFull.ResetStats(wt);
+
+                    totalArrivedPairs = 0;
+                    totalRejectedPairs = 0;
+                    completedAggregates = 0;
+                    warmupDone = true;
+                }
+
+                if (ev.Time > totalEndTime)
+                {
+                    currentTime = totalEndTime;
                     break;
                 }
 
@@ -350,19 +395,21 @@ namespace Course_work_7_Sem
             bufferSucc.UpdateStats(currentTime);
             bufferFail.UpdateStats(currentTime);
 
+            double statsDuration = currentTime - _config.WarmupTime;
+
             return new ReplicationResult
             {
                 ArrivedPairs = totalArrivedPairs,
                 RejectedPairs = totalRejectedPairs,
                 RejectionProbability = totalArrivedPairs > 0 ? (double)totalRejectedPairs / totalArrivedPairs : 0.0,
-                UtilizationD1 = channelPrimary.TotalBusyTime / currentTime,
-                UtilizationD2 = channelSecondary.TotalBusyTime / currentTime,
-                UtilizationD3 = channelFull.TotalBusyTime / currentTime,
-                AvgQueueD1 = inputQueue.GetAverageLength(currentTime),
+                UtilizationD1 = channelPrimary.TotalBusyTime / statsDuration,
+                UtilizationD2 = channelSecondary.TotalBusyTime / statsDuration,
+                UtilizationD3 = channelFull.TotalBusyTime / statsDuration,
+                AvgQueueD1 = inputQueue.GetAverageLength(statsDuration),
                 MaxQueueD1 = inputQueue.MaxObserved,
-                AvgQueueSecondary = bufferSucc.GetAverageLength(currentTime),
+                AvgQueueSecondary = bufferSucc.GetAverageLength(statsDuration),
                 MaxQueueSecondary = bufferSucc.MaxObserved,
-                AvgQueueFull = bufferFail.GetAverageLength(currentTime),
+                AvgQueueFull = bufferFail.GetAverageLength(statsDuration),
                 MaxQueueFull = bufferFail.MaxObserved,
                 CompletedAggregates = completedAggregates
             };

@@ -1,12 +1,11 @@
-﻿"""Побудова рисунків розділу 4. Дані: папка out із CSV, які створює TraceSim.cs."""
-import os
+﻿import os
 import numpy as np
 import pandas as pd
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-OUT = "bin/Debug/net10.0/out"
+OUT = "./out"
 FIG = "figures"
 os.makedirs(FIG, exist_ok=True)
 
@@ -30,21 +29,21 @@ ROUTES = [
 ]
 
 EXPECTED = {
-    "N0_T5000": dict(qin_avg=0.00, qin_max=0.00, qfail_max=117.06,
-                     w_Q_in=NAN, w_Q_succ=16.74, w_Q_fail=1699.42,
-                     t_D1_D2=76.25, t_D3=1763.17),
-    "N4_T5000": dict(qin_avg=1.50, qin_max=4.00, qfail_max=41.50,
-                     w_Q_in=44.75, w_Q_succ=71.34, w_Q_fail=1041.79,
-                     t_D1_D2=161.05, t_D3=1117.95),
-    "N14_T5000": dict(qin_avg=5.89, qin_max=13.96, qfail_max=16.80,
-                      w_Q_in=115.34, w_Q_succ=135.39, w_Q_fail=731.75,
-                      t_D1_D2=293.82, t_D3=819.49),
-    "N14_T10000": dict(qin_avg=6.02, qin_max=14.00, qfail_max=26.31,
-                       w_Q_in=118.13, w_Q_succ=160.90, w_Q_fail=1033.97,
-                       t_D1_D2=322.38, t_D3=1128.72),
-    "N124_T5000": dict(qin_avg=17.32, qin_max=42.90, qfail_max=0.00,
-                       w_Q_in=280.96, w_Q_succ=167.16, w_Q_fail=NAN,
-                       t_D1_D2=473.22, t_D3=NAN),
+    "N0_T5000": dict(qin_avg=0.00, qin_max=0.00, qfail_max=149.51,
+                     w_Q_in=NAN, w_Q_succ=16.53, w_Q_fail=2760.74,
+                     t_D1_D2=76.01, t_D3=2790.05),
+    "N4_T5000": dict(qin_avg=1.51, qin_max=4.00, qfail_max=51.80,
+                     w_Q_in=44.95, w_Q_succ=75.73, w_Q_fail=1613.65,
+                     t_D1_D2=166.01, t_D3=1674.94),
+    "N14_T5000": dict(qin_avg=6.15, qin_max=14.00, qfail_max=19.08,
+                      w_Q_in=119.53, w_Q_succ=163.12, w_Q_fail=934.33,
+                      t_D1_D2=327.48, t_D3=1018.11),
+    "N14_T10000": dict(qin_avg=6.27, qin_max=14.00, qfail_max=28.57,
+                       w_Q_in=121.63, w_Q_succ=174.61, w_Q_fail=1167.87,
+                       t_D1_D2=340.61, t_D3=1258.56),
+    "N124_T5000": dict(qin_avg=24.13, qin_max=50.80, qfail_max=0.00,
+                       w_Q_in=372.89, w_Q_succ=218.45, w_Q_fail=NAN,
+                       t_D1_D2=615.80, t_D3=NAN),
 }
 
 _cache = {}
@@ -242,9 +241,9 @@ def dashboard(tag, name, title, cap=None):
 def fig_dependence_on_N(name):
     """Додатковий рисунок за таблицею 4.2 (значення з консолі)."""
     N = [0, 2, 4, 6, 8, 10, 12, 14, 16, 20, 30, 40, 50, 60, 80, 100, 120, 150, 200]
-    p_sim = [0.5003, 0.3347, 0.2484, 0.1958, 0.1609, 0.1334, 0.1081, 0.0977, 0.0844,
-             0.0608, 0.0419, 0.0279, 0.0138, 0.0059, 0.0007, 0, 0, 0, 0]
-    no_rej = [0, 0, 0, 0, 0, 1, 1, 3, 7, 14, 30, 49, 66, 81, 97, 100, 100, 100, 100]
+    p_sim = [0.4964, 0.3316, 0.2493, 0.1945, 0.1640, 0.1468, 0.1214, 0.1052, 0.0956,
+             0.0755, 0.0593, 0.0437, 0.0258, 0.0111, 0.0040, 0.0003, 0, 0, 0]
+    no_rej = [0, 0, 0, 0, 0, 0, 0, 0, 2, 7, 20, 35, 51, 71, 89, 99, 100, 100, 100]
     p_th = [1 / (1 + n / 2 + 1) for n in N]
     fig, axes = plt.subplots(1, 2, figsize=(11, 4.5))
     axes[0].plot(N, p_sim, "o-", label="Симуляція (T = 5000 хв)")
@@ -311,16 +310,17 @@ def main():
     for t in required:
         check_against_console(t)
 
+
     print("\nПобудова рисунків...")
-    fig_queues("N0_T5000", "fig_4_1.png", "Довжини черг, базова модель (N = 0)")
+    fig_queues("N0_T5000", "fig_4_1.png", "Довжини черг, базова модель (N = 0)", vline=1500)
     fig_queue_stats("N0_T5000", "fig_4_2.png", "Аналіз черг, базова модель (N = 0)")
     fig_routes("N0_T5000", "fig_4_3.png", "Маршрути обробки, базова модель (N = 0)")
     dashboard("N0_T5000", "fig_4_4.png", "Основні метрики, базова модель (N = 0)")
-    fig_queues("N4_T5000", "fig_4_5.png", "Довжини черг (N = 4)")
-    fig_queues("N14_T5000", "fig_4_6.png", "Довжини черг (N = 14)")
+    fig_queues("N4_T5000", "fig_4_5.png", "Довжини черг (N = 4)", vline=1500)
+    fig_queues("N14_T5000", "fig_4_6.png", "Довжини черг (N = 14)", vline=1500)
     fig_queues("N14_T10000", "fig_4_7.png",
-               "Перевірка виходу на сталий режим (N = 14, T = 10000 хв)", vline=5000)
-    fig_queues("N124_T5000", "fig_4_8.png", "Довжини черг (N = 124)")
+               "Перевірка виходу на сталий режим (N = 14, T = 10000 хв)", vline=1500)
+    fig_queues("N124_T5000", "fig_4_8.png", "Довжини черг (N = 124)", vline=1500)
     fig_total("N124_T5000", "fig_4_9.png", "Кількість агрегатів у системі (N = 124)")
     fig_queue_stats("N124_T5000", "fig_4_10.png", "Аналіз черг (N = 124)")
     fig_routes("N124_T5000", "fig_4_11.png", "Час перебування за маршрутами (N = 124)")

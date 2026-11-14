@@ -42,6 +42,9 @@ namespace Course_work_7_Sem
             var tr = new TraceResult();
 
             double currentTime = 0.0;
+            double totalEndTime = _config.WarmupTime + _config.SimTime;
+            bool warmupDone = _config.WarmupTime <= 0.0;
+
             int aggregateCounter = 0;
             var eventQueue = new PriorityQueue<SimEvent, double>();
 
@@ -68,7 +71,8 @@ namespace Course_work_7_Sem
             Aggregate Take(QueueTracker q, List<double> waits)
             {
                 var a = q.Dequeue(currentTime);
-                waits.Add(currentTime - enqTime[a.Id]);
+                if (warmupDone)
+                    waits.Add(currentTime - enqTime[a.Id]);
                 enqTime.Remove(a.Id);
                 return a;
             }
@@ -88,20 +92,44 @@ namespace Course_work_7_Sem
             double firstArrival = NextExp(_config.MeanArrivalInterval);
             eventQueue.Enqueue(new SimEvent(firstArrival, EventType.Arrival), firstArrival);
 
+
             while (eventQueue.Count > 0)
             {
                 var ev = eventQueue.Dequeue();
 
-                double evTime = Math.Min(ev.Time, _config.SimTime);
+                double evTime = Math.Min(ev.Time, totalEndTime);
                 while (nextSample <= evTime)
                 {
                     tr.Samples.Add(Snapshot(nextSample));
                     nextSample += _traceStep;
                 }
 
-                if (ev.Time > _config.SimTime)
+                if (!warmupDone && ev.Time >= _config.WarmupTime)
                 {
-                    currentTime = _config.SimTime;
+                    double wt = _config.WarmupTime;
+                    inputQueue.UpdateStats(wt);
+                    bufferSucc.UpdateStats(wt);
+                    bufferFail.UpdateStats(wt);
+                    channelPrimary.FinalizeTime(wt);
+                    channelSecondary.FinalizeTime(wt);
+                    channelFull.FinalizeTime(wt);
+
+                    inputQueue.ResetStats(wt);
+                    bufferSucc.ResetStats(wt);
+                    bufferFail.ResetStats(wt);
+                    channelPrimary.ResetStats(wt);
+                    channelSecondary.ResetStats(wt);
+                    channelFull.ResetStats(wt);
+
+                    totalArrivedPairs = 0;
+                    totalRejectedPairs = 0;
+                    completedAggregates = 0;
+                    warmupDone = true;
+                }
+
+                if (ev.Time > totalEndTime)
+                {
+                    currentTime = totalEndTime;
                     break;
                 }
 
@@ -182,8 +210,11 @@ namespace Course_work_7_Sem
                     case EventType.EndSecondary:
                         var sBatch = channelSecondary.CompleteService(currentTime);
                         completedAggregates += sBatch.Count;
-                        foreach (var done in sBatch)
-                            tr.TimesMain.Add(currentTime - done.ArrivalTime);
+                        if (warmupDone)
+                        {
+                            foreach (var done in sBatch)
+                                tr.TimesMain.Add(currentTime - done.ArrivalTime);
+                        }
 
                         if (bufferSucc.Count >= channelSecondary.BatchSize)
                         {
@@ -198,8 +229,11 @@ namespace Course_work_7_Sem
                     case EventType.EndFull:
                         var fBatch = channelFull.CompleteService(currentTime);
                         completedAggregates += fBatch.Count;
-                        foreach (var done in fBatch)
-                            tr.TimesFull.Add(currentTime - done.ArrivalTime);
+                        if (warmupDone)
+                        {
+                            foreach (var done in fBatch)
+                                tr.TimesFull.Add(currentTime - done.ArrivalTime);
+                        }
 
                         if (bufferFail.Count >= channelFull.BatchSize)
                         {
@@ -220,19 +254,21 @@ namespace Course_work_7_Sem
             bufferSucc.UpdateStats(currentTime);
             bufferFail.UpdateStats(currentTime);
 
+            double statsDuration = currentTime - _config.WarmupTime;
+
             tr.Base = new ReplicationResult
             {
                 ArrivedPairs = totalArrivedPairs,
                 RejectedPairs = totalRejectedPairs,
                 RejectionProbability = totalArrivedPairs > 0 ? (double)totalRejectedPairs / totalArrivedPairs : 0.0,
-                UtilizationD1 = channelPrimary.TotalBusyTime / currentTime,
-                UtilizationD2 = channelSecondary.TotalBusyTime / currentTime,
-                UtilizationD3 = channelFull.TotalBusyTime / currentTime,
-                AvgQueueD1 = inputQueue.GetAverageLength(currentTime),
+                UtilizationD1 = channelPrimary.TotalBusyTime / statsDuration,
+                UtilizationD2 = channelSecondary.TotalBusyTime / statsDuration,
+                UtilizationD3 = channelFull.TotalBusyTime / statsDuration,
+                AvgQueueD1 = inputQueue.GetAverageLength(statsDuration),
                 MaxQueueD1 = inputQueue.MaxObserved,
-                AvgQueueSecondary = bufferSucc.GetAverageLength(currentTime),
+                AvgQueueSecondary = bufferSucc.GetAverageLength(statsDuration),
                 MaxQueueSecondary = bufferSucc.MaxObserved,
-                AvgQueueFull = bufferFail.GetAverageLength(currentTime),
+                AvgQueueFull = bufferFail.GetAverageLength(statsDuration),
                 MaxQueueFull = bufferFail.MaxObserved,
                 CompletedAggregates = completedAggregates
             };
@@ -260,11 +296,6 @@ namespace Course_work_7_Sem
 
         public static void Export(string dir, string tag, List<TraceResult> reps)
         {
-            //Directory.CreateDirectory(dir);
-            //using var qs = new StreamWriter(Path.Combine(dir, $"queues_{tag}.csv"));
-            //using var rs = new StreamWriter(Path.Combine(dir, $"routes_{tag}.csv"));
-            //using var ws = new StreamWriter(Path.Combine(dir, $"waits_{tag}.csv"));
-            //using var sm = new StreamWriter(Path.Combine(dir, $"summary_{tag}.csv"));
 
             string baseDir = AppDomain.CurrentDomain.BaseDirectory;
             string projectRoot = Path.GetFullPath(Path.Combine(baseDir, "..", "..", ".."));
