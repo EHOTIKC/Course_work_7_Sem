@@ -5,9 +5,9 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-	  <StartupObject>Course_work_7_Sem.TraceProgram</StartupObject>
+	  <!--<StartupObject>Course_work_7_Sem.TraceProgram</StartupObject>-->
 	  <!--<StartupObject>Course_work_7_Sem.ExtraProgram</StartupObject>-->
-	  <!--<StartupObject>Course_work_7_Sem.Program</StartupObject>-->
+	  <StartupObject>Course_work_7_Sem.Program</StartupObject>
   </PropertyGroup>
 
 </Project>

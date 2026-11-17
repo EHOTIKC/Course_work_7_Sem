@@ -48,19 +48,29 @@ namespace Course_work_7_Sem
             int aggregateCounter = 0;
             var eventQueue = new PriorityQueue<SimEvent, double>();
 
-            var channelPrimary = new ServiceChannel("Первинне", _config.MeanPrimaryTime, 2);
-            var channelSecondary = new ServiceChannel("Вторинне", _config.MeanSecondaryTime, 2);
-            var channelFull = new ServiceChannel("Повне", _config.MeanFullTime, 1);
-
             var inputQueue = new QueueTracker("Вхідний буфер");
             var bufferSucc = new QueueTracker("Буфер успішних");
             var bufferFail = new QueueTracker("Буфер відхилених");
+
+            var channelPrimary = new ServiceChannel("Первинне", _config.MeanPrimaryTime, 2, inputQueue);
+            var channelSecondary = new ServiceChannel("Вторинне", _config.MeanSecondaryTime, 2, bufferSucc);
+            var channelFull = new ServiceChannel("Повне", _config.MeanFullTime, 1, bufferFail);
+
+            channelPrimary.NextQueue = bufferSucc;
+            channelPrimary.NextChannel = channelSecondary;
+            channelPrimary.OutputStatus = AggregateStatus.PrimarySuccess;
 
             int totalArrivedPairs = 0;
             int totalRejectedPairs = 0;
             int completedAggregates = 0;
 
             var enqTime = new Dictionary<int, double>();
+            var waitLists = new Dictionary<QueueTracker, List<double>>
+            {
+                { inputQueue, tr.WaitsIn },
+                { bufferSucc, tr.WaitsSucc },
+                { bufferFail, tr.WaitsFail }
+            };
 
             void Put(QueueTracker q, Aggregate a)
             {
@@ -68,13 +78,27 @@ namespace Course_work_7_Sem
                 q.Enqueue(a, currentTime);
             }
 
-            Aggregate Take(QueueTracker q, List<double> waits)
+            Aggregate Take(QueueTracker q)
             {
                 var a = q.Dequeue(currentTime);
                 if (warmupDone)
-                    waits.Add(currentTime - enqTime[a.Id]);
+                    waitLists[q].Add(currentTime - enqTime[a.Id]);
                 enqTime.Remove(a.Id);
                 return a;
+            }
+
+            void TryStartChannel(ServiceChannel ch)
+            {
+                if (!ch.IsBusy && ch.InputQueue.Count >= ch.BatchSize)
+                {
+                    var batch = new List<Aggregate>(ch.BatchSize);
+                    for (int i = 0; i < ch.BatchSize; i++)
+                        batch.Add(Take(ch.InputQueue));
+
+                    ch.StartService(batch, currentTime);
+                    double dur = NextExp(ch.MeanServiceTime);
+                    eventQueue.Enqueue(new SimEvent(currentTime + dur, EventType.ServiceEnd, ch), currentTime + dur);
+                }
             }
 
             double nextSample = 0.0;
@@ -91,7 +115,6 @@ namespace Course_work_7_Sem
 
             double firstArrival = NextExp(_config.MeanArrivalInterval);
             eventQueue.Enqueue(new SimEvent(firstArrival, EventType.Arrival), firstArrival);
-
 
             while (eventQueue.Count > 0)
             {
@@ -149,7 +172,7 @@ namespace Course_work_7_Sem
                         {
                             channelPrimary.StartService(new[] { a1, a2 }, currentTime);
                             double dur = NextExp(channelPrimary.MeanServiceTime);
-                            eventQueue.Enqueue(new SimEvent(currentTime + dur, EventType.EndPrimary), currentTime + dur);
+                            eventQueue.Enqueue(new SimEvent(currentTime + dur, EventType.ServiceEnd, channelPrimary), currentTime + dur);
                         }
                         else
                         {
@@ -166,13 +189,7 @@ namespace Course_work_7_Sem
                                 Put(bufferFail, a1);
                                 Put(bufferFail, a2);
 
-                                if (!channelFull.IsBusy && bufferFail.Count >= channelFull.BatchSize)
-                                {
-                                    var item = Take(bufferFail, tr.WaitsFail);
-                                    channelFull.StartService(new[] { item }, currentTime);
-                                    double durFull = NextExp(channelFull.MeanServiceTime);
-                                    eventQueue.Enqueue(new SimEvent(currentTime + durFull, EventType.EndFull), currentTime + durFull);
-                                }
+                                TryStartChannel(channelFull);
                             }
                         }
 
@@ -180,67 +197,35 @@ namespace Course_work_7_Sem
                         eventQueue.Enqueue(new SimEvent(nextArr, EventType.Arrival), nextArr);
                         break;
 
-                    case EventType.EndPrimary:
-                        var pBatch = channelPrimary.CompleteService(currentTime);
-                        foreach (var agg in pBatch)
+                    case EventType.ServiceEnd:
+                        var channel = ev.Channel!;
+                        var finishedBatch = channel.CompleteService(currentTime);
+
+                        if (channel.NextQueue != null)
                         {
-                            agg.Status = AggregateStatus.PrimarySuccess;
-                            Put(bufferSucc, agg);
+                            foreach (var agg in finishedBatch)
+                            {
+                                if (channel.OutputStatus.HasValue)
+                                    agg.Status = channel.OutputStatus.Value;
+                                Put(channel.NextQueue, agg);
+                            }
+                        }
+                        else
+                        {
+                            completedAggregates += finishedBatch.Count;
+                            if (warmupDone)
+                            {
+                                var targetTimes = channel == channelSecondary ? tr.TimesMain : tr.TimesFull;
+                                foreach (var done in finishedBatch)
+                                    targetTimes.Add(currentTime - done.ArrivalTime);
+                            }
                         }
 
-                        if (inputQueue.Count >= channelPrimary.BatchSize)
-                        {
-                            var b1 = Take(inputQueue, tr.WaitsIn);
-                            var b2 = Take(inputQueue, tr.WaitsIn);
-                            channelPrimary.StartService(new[] { b1, b2 }, currentTime);
-                            double dur = NextExp(channelPrimary.MeanServiceTime);
-                            eventQueue.Enqueue(new SimEvent(currentTime + dur, EventType.EndPrimary), currentTime + dur);
-                        }
+                        TryStartChannel(channel);
 
-                        if (!channelSecondary.IsBusy && bufferSucc.Count >= channelSecondary.BatchSize)
+                        if (channel.NextChannel != null)
                         {
-                            var s1 = Take(bufferSucc, tr.WaitsSucc);
-                            var s2 = Take(bufferSucc, tr.WaitsSucc);
-                            channelSecondary.StartService(new[] { s1, s2 }, currentTime);
-                            double durSec = NextExp(channelSecondary.MeanServiceTime);
-                            eventQueue.Enqueue(new SimEvent(currentTime + durSec, EventType.EndSecondary), currentTime + durSec);
-                        }
-                        break;
-
-                    case EventType.EndSecondary:
-                        var sBatch = channelSecondary.CompleteService(currentTime);
-                        completedAggregates += sBatch.Count;
-                        if (warmupDone)
-                        {
-                            foreach (var done in sBatch)
-                                tr.TimesMain.Add(currentTime - done.ArrivalTime);
-                        }
-
-                        if (bufferSucc.Count >= channelSecondary.BatchSize)
-                        {
-                            var s1 = Take(bufferSucc, tr.WaitsSucc);
-                            var s2 = Take(bufferSucc, tr.WaitsSucc);
-                            channelSecondary.StartService(new[] { s1, s2 }, currentTime);
-                            double durSec = NextExp(channelSecondary.MeanServiceTime);
-                            eventQueue.Enqueue(new SimEvent(currentTime + durSec, EventType.EndSecondary), currentTime + durSec);
-                        }
-                        break;
-
-                    case EventType.EndFull:
-                        var fBatch = channelFull.CompleteService(currentTime);
-                        completedAggregates += fBatch.Count;
-                        if (warmupDone)
-                        {
-                            foreach (var done in fBatch)
-                                tr.TimesFull.Add(currentTime - done.ArrivalTime);
-                        }
-
-                        if (bufferFail.Count >= channelFull.BatchSize)
-                        {
-                            var item = Take(bufferFail, tr.WaitsFail);
-                            channelFull.StartService(new[] { item }, currentTime);
-                            double durFull = NextExp(channelFull.MeanServiceTime);
-                            eventQueue.Enqueue(new SimEvent(currentTime + durFull, EventType.EndFull), currentTime + durFull);
+                            TryStartChannel(channel.NextChannel);
                         }
                         break;
                 }
@@ -296,7 +281,6 @@ namespace Course_work_7_Sem
 
         public static void Export(string dir, string tag, List<TraceResult> reps)
         {
-
             string baseDir = AppDomain.CurrentDomain.BaseDirectory;
             string projectRoot = Path.GetFullPath(Path.Combine(baseDir, "..", "..", ".."));
             string fullOutDir = Path.Combine(projectRoot, dir);
